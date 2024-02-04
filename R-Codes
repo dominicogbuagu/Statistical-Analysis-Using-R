@@ -1,0 +1,372 @@
+
+# Installing packages and libraries
+
+install.packages('Hmisc')
+install.packages('knitr')  
+install.packages(c("ggplot2", "ggdist"))
+install.packages("doBy")
+install.packages("devtools")
+devtools::install_github("harrelfe/Hmisc")
+
+library(doBy)
+library(knitr)      # This helps to create a visualized table in markdown format 
+library(readr)      #Reads Rectangular Data like (csv)
+library(dplyr)      #It helps to manipulate, clean and summarize unstructured data
+#multivariate analysis and scale construction using factor analysis,
+library(psych)      #principal component analysis, cluster analysis and reliability analysis.
+library(tidyverse)  #data wrangling, tidying, reading/writing, parsing, and visualizing.
+library(corrplot)   #provides a visual exploratory tool on correlation matrix
+library(qqplotr)    #Provides a visual exploratory tool for Q-Q plot
+library(summarytools)  #providing tools to neatly and quickly summarize data
+library(Hmisc)  #Harrell Miscellaneous useful for data analysis
+library(car)     #Companion to Applied Regression to perform Applied Regression techniques
+library(ggplot2)
+library(ggdist)
+#User Contributed Packages
+library (TTR) #Technical Trading Rules for technical analysis
+#dev.on()
+library(forecast)  #Forecast for displaying and analysing univariate time series
+detach("package:qqplotr", unload = TRUE)
+library(tidyr)
+
+# Reading the dataset into R
+
+data <- read.csv("gdp_growth_europe.csv", header= TRUE)
+
+###### PREPARATION AND EXPLORATION OF DATASET ANALYSIS ##########
+
+# Viewing the dataset
+head(data)
+
+# Viewing the column names
+colnames(data)
+
+# Creating a new dataframe to select specific indicators/columns for the purpose of analysis
+gdpdata <- data[,c(1, 3, 5, 6, 7, 8, 9, 10, 11, 12, 14, 17, 18, 19, 20)]
+
+# Viewing the new dataframe
+head(gdpdata)
+
+# Renaming the column names for easy usage
+
+names(gdpdata)[1] <- 'Year'
+names(gdpdata)[2] <- 'Country' 
+names(gdpdata)[3] <- 'Export_gdp'
+names(gdpdata)[4] <- 'Import_gdp'
+names(gdpdata)[5] <- 'Trade_gdp'
+names(gdpdata)[6] <- 'NatExpenditure_gdp' 
+names(gdpdata)[7] <- 'Gross_Savings_gdp' 
+names(gdpdata)[8] <- 'CapForm_gdp' 
+names(gdpdata)[9] <- 'FDI_In_gdp' 
+names(gdpdata)[10] <- 'FDI_Out_gdp'
+names(gdpdata)[11] <- 'GDP_Per_Capita_Growth'
+names(gdpdata)[12] <- 'GDP_Growth'
+names(gdpdata)[13] <- 'Industry_gdp'
+names(gdpdata)[14] <- 'Manufacturing_gdp'
+names(gdpdata)[15] <- 'PopulationT_gdp'
+
+# Renaming of 'Russian Federation' to 'Russia' for easy usage
+gdpdata$Country <- sub("Russian Federation", "Russia", gdpdata$Country)
+
+# Checking to confirm the new changes in the dataframe 'gdpdata' 
+colnames(gdpdata)
+head(gdpdata)
+
+#Checking the data types/structure
+str(gdpdata)
+
+# Checking missing values
+columns_with_missing <- names(gdpdata)[colSums(is.na(gdpdata)) > 0]
+print(columns_with_missing)
+
+# Dropping the rows with the missing values since the are insignificant 
+gdpdata <- gdpdata[1:(nrow(gdpdata) - 3), ]
+
+# Checking for outliers
+outliers_summary <- gdpdata %>%
+  summarise(across(where(is.numeric), list(outliers = ~sum(. > quantile(., 0.75) + 1.5 * IQR(.) | . < quantile(., 0.25) - 1.5 * IQR(.)))))
+print(outliers_summary)
+
+# Using boxplot to view the outliers
+gdpdata %>%
+  pivot_longer(cols = starts_with("GDP"), names_to = "Variable", values_to = "Value") %>%
+  ggplot(aes(x = Variable, y = Value, color = (Value > quantile(Value, 0.75) + 1.5 * IQR(Value)) | (Value < quantile(Value, 0.25) - 1.5 * IQR(Value)))) +
+  geom_boxplot() +
+  geom_point(size = 2) +
+  labs(title = "Boxplot with Outliers Highlighted",
+       x = "Variable",
+       y = "Value",
+       color = "Outliers") +
+  theme_minimal()
+
+
+# Visualization of the distribution of GDP Growth across all the countries using histogram
+ggplot(gdpdata, aes(x = GDP_Growth)) + 
+  geom_histogram(binwidth = 1, fill = 'blue', color = 'black') +
+  labs(title = 'Distribution of GDP Growth Across All Countries', x = 'GDP_Growth', y = 'Frequency')
+
+# Visualization of the distribution of GDP Growth for Germany using a histogram plot
+ggplot(subset(gdpdata, Country == "Germany"), aes(x = GDP_Growth)) + 
+  geom_histogram(binwidth = 1, fill = 'blue', color = 'black') +
+  labs(title = 'Distribution of GDP Growth for Germany', x = 'GDP Growth', y = 'Frequency')
+
+# Visualization Comparing the distribution of GDP Growth for Germany and Russia using boxplot
+ggplot(subset(gdpdata, Country %in% c("Germany", "Russia")), aes(x = Country, y = GDP_Growth, fill = Country)) + 
+  geom_boxplot() +
+  labs(title = 'Comparison of GDP Growth: Germany vs. Russia', x = 'Country', y = 'GDP Growth') +
+  scale_fill_manual(values = c("Germany" = "blue", "Russia" = "red"))
+
+# Visualization of the distribution of GDP Growth for Russia using density plot
+ggplot(subset(gdpdata, Country == "Russia"), aes(x = GDP_Growth)) + 
+  geom_density(fill = 'blue', color = 'black') +
+  labs(title = 'Density Plot of GDP Growth for Russia', x = 'GDP Growth', y = 'Density')
+
+
+# Creating dataframe for Germany and Russia for Comparison
+gdpdata_Germany <- (gdpdata[gdpdata$Country == "Germany",])
+gdpdata_Russia <- (gdpdata[gdpdata$Country == "Russia",])
+
+# Creating a dataframe by region
+gdpdata_EasternRegion <- gdpdata %>% filter(Country %in% c('Russia', 'Poland'))
+gdpdata_WesternRegion <- gdpdata %>% filter(Country %in% c('Germany', 'France', 'Netherlands', 'Switzerland'))
+gdpdata_NorthernRegion <- gdpdata %>% filter(Country %in% c('United Kingdom', 'Sweden'))
+gdpdata_SouthernRegion <- gdpdata %>% filter(Country %in% c('Italy', 'Spain'))
+
+
+
+####### DESCRIPTIVE STATISTICAL ANALYSIS ###########
+
+# Generating the summary descriptive statistics for all the numerical variables, grouped by 'Country'
+stats_result <- psych::describeBy(gdpdata[, c('Import_gdp', 'Export_gdp', 'FDI_In_gdp', 'FDI_Out_gdp', 'CapForm_gdp', 'NatExpenditure_gdp', 'Gross_Savings_gdp',
+'Trade_gdp', 'GDP_Per_Capita_Growth', 'GDP_Growth')], gdpdata$Country)
+print(stats_result)
+
+# Converting the result to a txt file
+capture.output(stats_result, file = "descriptive_analysis_result.txt")
+
+# Descriptive statistics of selected regions
+# Eastern Region
+psych::describe(gdpdata_EasternRegion[, c('Import_gdp', 'Export_gdp', 'FDI_In_gdp', 'FDI_Out_gdp', 'CapForm_gdp', 'NatExpenditure_gdp', 'Gross_Savings_gdp', 'Trade_gdp', 'GDP_Per_Capita_Growth', 'GDP_Growth')])
+# Western Region
+psych::describe(gdpdata_WesternRegion[, c('Import_gdp', 'Export_gdp', 'FDI_In_gdp', 'FDI_Out_gdp', 'CapForm_gdp', 'NatExpenditure_gdp', 'Gross_Savings_gdp', 'Trade_gdp', 'GDP_Per_Capita_Growth', 'GDP_Growth')])
+
+
+##### Normality Test ##################
+
+# Normality check per country 
+
+set.seed(0)
+
+shapiro.test(gdpdata_Germany$GDP_Growth) #normality assumed for a p-value greater than 0.05
+shapiro.test(gdpdata_Russia$GDP_Growth)  #normality assumed for a p-value greater than 0.05
+
+# Normality per region
+
+shapiro.test(gdpdata_EasternRegion$GDP_Growth)  #normality assumed for a p-value greater than 0.05
+shapiro.test(gdpdata_WesternRegion$GDP_Growth)  #normality assumed for a p-value greater than 0.05
+
+
+############## CORRELATION ANALYSIS FOR ALL COUNTRIES ####################################
+
+# Definition the cor_gdpdata to generate correlation matrix for all indicators in the dataframe
+cor_gdpdata = round(cor(gdpdata[, 3:15]), digits = 2) # rounded to 2 decimals
+                    
+# Viewing the correlation analysis
+cor_gdpdata
+                    
+# Visualization of the correlation using corrplot
+                    
+# Displaying all the sides
+corrplot(cor_gdpdata, tl.cex= 0.5)
+                    
+# Displaying only the upper side
+corrplot(cor_gdpdata, type = "upper", tl.cex=0.5)
+                    
+# Correlation coefficients
+coef_gdpdata <- cor(gdpdata[, 3:15])
+
+# Plot the correlation matrix using corrplot
+corrplot(coef_gdpdata, method = "circle")
+
+# Correlation for Germany
+cor(gdpdata_Germany[, 3:15])
+numeric_data_Germany <- gdpdata_Germany[, 3:15]   #Storing the numerical variable in a dataframe
+cor(numeric_data_Germany)                          #Calculating the correlation matrix
+corrplot((cor(numeric_data_Germany)), tl.cex= 0.5) #Plotting the correlation matrix
+
+#Correlation for Russia
+cor(gdpdata_Russia[, 3:15])
+numeric_data_Russia <- gdpdata_Russia[, sapply(gdpdata_Russia, is.numeric)] #Selecting the numerics from the dataframe
+corrplot((cor(numeric_data_Russia)), tl.cex= 0.5) # Plotting the correlation matrix
+
+
+########## HYPOTHESIS TESTING ##########################
+
+# Hypothesis 1: There is no significant correlation between Trade_gdp and GDP_Growth
+cor_test_H1 <- cor.test(gdpdata$Trade_gdp, gdpdata$GDP_Growth)
+print(cor_test_H1)
+
+# Hypothesis 2: There is a significant difference between the means of GDP_Growth in the Eastern region and Western region
+
+t_test_H2 <- t.test(
+  gdpdata_WesternRegion$GDP_Growth,
+  gdpdata_EasternRegion$GDP_Growth
+)
+print(t_test_H2)
+
+
+########## REGRESSION ANALYSIS #########################
+
+# Simple linear regression 
+# The objective is to find out the relationship that exist between Trade (% of GDP) and GDP Growth for across the countries within the given period.
+
+# Creating a scatter plot for linearity check
+plot(gdpdata$Trade_gdp, gdpdata$GDP_Growth, main="Scatter Plot", xlab="Trade_gdp", ylab="GDP_Growth")
+
+# Fitting a simple linear regression model
+reg_model <- lm(GDP_Growth ~ Trade_gdp, data = gdpdata)
+summary(reg_model)
+
+# Checking assumptions
+#1 Residual's Independence : Inspect the Residuals vs. Fitted Values and Residuals vs. Leverage plots for patterns. (Residuals vs. Fitted Values Plot)
+plot(reg_model, which = 1)
+
+# Linearity
+# Check the scatter plot above
+
+#2 Normality of residuals : Evaluate the Normal Q-Q plot for a straight line
+# Normal Q-Q Plot
+plot(reg_model, which = 2)
+
+#3 Scale-Location (Spread-Location) Plot
+# Scale-Location Plot
+plot(reg_model, which = 3)
+
+
+#4 Residuals vs. Leverage Plot
+plot(reg_model, which = 5)
+
+# Equal Variances (Homoscedasticity): Assess the Scale-Location plot for a constant spread.
+
+
+# Displaying regression results
+summary(reg_model)
+coeftest(reg_model, vcov = vcovHC, type = 'HC0')
+
+# Multi Linear Regression                    
+# Objective :  To determine the relation that exist between independent and dependent variables
+                    
+# First Model for the Multiple Regression for the reduced gdpdata
+
+# Creation of reduced gdpdata for non-closely related variables 
+Reduced_gdpdata1 <- gdpdata[,c('CapForm_gdp','Trade_gdp','GDP_Per_Capita_Growth','GDP_Growth')]
+
+# Viewing the correlation of the reduced_gdpdata1 dataframe
+cor_Reduced_gdpdata1 = cor(Reduced_gdpdata1)
+
+# Displaying all the sides
+corrplot(cor_Reduced_gdpdata1, tl.cex= 0.5)
+
+# Displaying only the upper side
+corrplot(cor_Reduced_gdpdata1,
+         type = "upper",tl.cex=0.5)
+
+## Carrying out Multiple Linear Regression for first model
+Reg_gdpdata <- lm(GDP_Growth~ CapForm_gdp + Trade_gdp +GDP_Per_Capita_Growth, Reduced_gdpdata1)
+
+# Displaying the summary
+summary.lm(Reg_gdpdata)
+
+                    
+# Second Model for the Multiple Regression for the reduced gdpdata
+                    
+# All Countries
+# Creation of dataframe with the chosen indicators
+Reduced_gdpdata2 <- gdpdata[,c('CapForm_gdp','NatExpenditure_gdp','Trade_gdp','GDP_Per_Capita_Growth','GDP_Growth')]
+                    
+cor(Reduced_gdpdata2)
+                    
+cor_Reduced_gdpdata2 = cor(Reduced_gdpdata2)
+                    
+# Displaying all the sides
+corrplot(cor_Reduced_gdpdata2, tl.cex= 0.5)
+               
+# Carrying out the multiple linear regression for the second model
+Reg_gdpdata2 <- lm(GDP_Growth~ NatExpenditure_gdp + Trade_gdp +GDP_Per_Capita_Growth + CapForm_gdp, Reduced_gdpdata2)
+                    
+# Viewing the summary
+summary.lm(Reg_gdpdata2)
+                    
+# Checking the variance inflation factor (VIF)
+vif(Reg_gdpdata2)
+                    
+# Viewing the columns for visualization
+colnames(Reduced_gdpdata1)
+                    
+# Decision: 
+# The first model with 55% was selected
+
+# Confirming that the fitted model meets MLR assumptions
+                    
+# MLR Assumptions ##########
+                    
+# Assumption 1: 
+# Linearity: scatter plot matrix
+# Scatter plot matrix with index numbers
+# Scatter plot matrix with adjusted margins
+par(mfrow = c(2, 2))  # Setting up a 2x2 layout for the scatter plot matrix
+par(mar = c(4, 4, 1, 1))  # Adjusting the margins (bottom, left, top, right)
+pairs(Reduced_gdpdata1[, c(4, 1, 2, 3)], pch = 19, cex = 0.2)
+
+# Assumption 2:
+# Residual's Independence
+plot(Reg_gdpdata2, 1)
+                    
+# Assumption 3:
+# Normality of residuals
+plot(Reg_gdpdata2, 2)
+                    
+# Assumption 4:
+# Equal variances of the residuals (Homoscedasticity)
+plot(Reg_gdpdata2, 3)
+                    
+# Assumption 5:
+# No multicollinearity : Variance inflation factor (VIF)
+vif(Reg_gdpdata2)
+                    
+# All 5 assumptions were met.
+                    
+###### TIME SERIES ANALYSIS #######
+
+# Time Series for GDP_Growth for Germany
+
+# Filtering data for Germany
+gdpdata_Germany <- subset(gdpdata, Country == "Germany")
+
+# Creating time series for Germany
+GDP_Growth_series_Germany <- ts(gdpdata_Germany$GDP_Growth, start = min(gdpdata_Germany$Year), frequency = 1)
+
+# Exploring and Visualizing the Time Series
+summary(GDP_Growth_series_Germany)
+plot(GDP_Growth_series_Germany, main = "GDP Growth Over Time (Germany)", ylab = "GDP Growth")
+
+# Train-Test splitting
+split_point_Germany <- length(GDP_Growth_series_Germany) - 5
+train_data_Germany <- GDP_Growth_series_Germany[1:split_point_Germany]
+test_data_Germany <- GDP_Growth_series_Germany[(split_point_Germany + 1):length(GDP_Growth_series_Germany)]
+
+# Time Series Modeling and Forecasting using Auto Arima
+GDP_Growth_model_Germany <- auto.arima(train_data_Germany)
+GDP_Growth_forecast_Germany <- forecast(GDP_Growth_model_Germany, h = 5)
+
+# Evaluating Residuals
+GDP_Growth_residuals_Germany <- resid(GDP_Growth_model_Germany)
+plot(GDP_Growth_residuals_Germany, main = "Residuals Plot (Germany)")
+plot(GDP_Growth_forecast_Germany, main = "Forecast Plot (Germany)")
+
+
+
+
+
+                  
+                   
